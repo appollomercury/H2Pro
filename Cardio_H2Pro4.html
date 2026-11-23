@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cardio H2Pro</title>
+<style>
+:root{--bg:#f4f5f7;--fg:#14181f;--mut:#667085;--card:#fff;--line:#d0d5dd;--acc:#d92d20;--ok:#1a7f4b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1318;--fg:#eef1f5;--mut:#98a2b3;--card:#1a2029;--line:#2d3644;--acc:#f97066;--ok:#47cd89}}
+:root[data-theme="dark"]{--bg:#0f1318;--fg:#eef1f5;--mut:#98a2b3;--card:#1a2029;--line:#2d3644;--acc:#f97066;--ok:#47cd89}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:16px system-ui,sans-serif;overflow:hidden}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+#app{display:flex;flex-direction:column;height:100%}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 12px}
+#bpm{font-size:56px;font-weight:700;line-height:1;min-width:2.2ch;font-variant-numeric:tabular-nums}
+#bpm small{font-size:16px;color:var(--mut);font-weight:500}
+.meta{flex:1;min-width:130px;line-height:1.35}
+#zone{font-weight:600}
+#timer{font-size:22px;font-variant-numeric:tabular-nums}
+#st{font-size:13px;color:var(--mut)}
+.btns{display:flex;gap:8px}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:10px;padding:10px 14px;cursor:pointer}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.45}
+#chartwrap{flex:1;min-height:0;position:relative;margin:0 6px}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+#legend{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px 8px;font-size:12px}
+.chip{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.chip i{width:10px;height:10px;border-radius:50%;display:inline-block}
+@media (orientation:landscape) and (max-height:520px){
+ header{padding:4px 10px;flex-wrap:nowrap}#bpm{font-size:40px}#timer{font-size:18px}button{padding:7px 11px}#legend{padding:3px 10px 5px}
+}
+#ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:20;align-items:center;justify-content:center}
+#ov.on{display:flex}
+#panel{background:var(--bg);color:var(--fg);width:min(560px,94%);max-height:88%;overflow:auto;border-radius:14px;padding:14px}
+#panel h3{margin:14px 0 6px;font-size:15px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0}
+.sess{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0}
+.sess .row{margin:4px 0 0}
+.sess button{padding:6px 10px;font-size:14px}
+input[type=number]{font:inherit;width:90px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+#dbg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:25;align-items:flex-end;justify-content:center}
+#dbg.on{display:flex}
+#dpanel{background:var(--bg);color:var(--fg);width:min(760px,100%);height:82%;display:flex;flex-direction:column;border-radius:14px 14px 0 0;padding:10px;box-sizing:border-box}
+#dpanel button{padding:6px 9px;font-size:13px}
+#dstat{font-size:12px;color:var(--mut);margin:4px 0}
+#log{flex:1;overflow:auto;margin:6px 0 0;font:11px/1.4 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:14px;display:none;z-index:30}
+</style>
+</head>
+<body>
+<div id="app">
+ <header>
+  <div id="bpm">--<small> bpm</small></div>
+  <div class="meta"><div id="zone">Zone —</div><div id="timer">00:00</div><div id="st">Déconnecté</div></div>
+  <div class="btns">
+   <button id="bConn" class="pri">Connecter</button>
+   <button id="bRec" disabled>Démarrer</button>
+   <button id="bDbg" aria-label="Diagnostic">🐞</button>
+   <button id="bMenu" aria-label="Menu">⋯</button>
+  </div>
+ </header>
+ <div id="chartwrap"><canvas id="cv"></canvas></div>
+ <div id="legend"></div>
+</div>
+<div id="ov"><div id="panel"></div></div>
+<div id="dbg"><div id="dpanel">
+ <div class="row"><b style="flex:1;font-size:16px">Journal de diagnostic</b><button id="dClose">Fermer</button></div>
+ <div id="dstat"></div>
+ <div class="row"><button id="dDiag">Diagnostic</button><button id="dAll">Scan large</button><button id="dAdv">Annonces</button><button id="dForget">Oublier</button><button id="dCopy">Copier</button><button id="dClear">Effacer</button></div>
+ <pre id="log"></pre>
+</div></div>
+<div id="toast"></div>
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+const cv=$("#cv"),TMIN_SPAN=20;
+let MAXHR=190;
+try{MAXHR=+localStorage.getItem("hr_max")||190}catch(e){}
+const Z=[
+ {n:"Z1 Récupération",a:.5,b:.6,c:"#8aa0b8"},
+ {n:"Z2 Aérobie léger",a:.6,b:.7,c:"#2e9e5b"},
+ {n:"Z3 Aérobie",a:.7,b:.8,c:"#e0a800"},
+ {n:"Z4 Seuil",a:.8,b:.9,c:"#e8681a"},
+ {n:"Z5 Maximum",a:.9,b:1.0,c:"#d92d20"}];
+function zoneOf(b){const r=b/MAXHR;if(r<.5)return -1;for(let i=0;i<5;i++)if(r<Z[i].b)return i;return 4}
+
+let pts=[],startMs=0,rec=false,dev=null,connected=false,wantConn=false,curBpm=0,viewing=null,wl=null,ticks=0;
+let view={x0:0,x1:900,auto:true};
+const data=()=>viewing?viewing.pts:pts;
+const tmax=()=>Math.max(3600,data().length?data()[data().length-1][0]+60:0);
+
+function fmt(t){t=Math.max(0,Math.round(t));const m=Math.floor(t/60),s=t%60;return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")}
+function fmtDate(ms){const d=new Date(ms),p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"_"+p(d.getHours())+"h"+p(d.getMinutes())}
+function toast(t){const e=$("#toast");e.textContent=t;e.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>e.style.display="none",2600)}
+function setSt(t){$("#st").textContent=t}
+
+/* ---------- Journal de diagnostic ---------- */
+const LOG=[];let hrCount=0,lastHrMs=0,attempt=0,advN=0,warnedNoHr=false,retrying=false,linking=false,reuseOk=false;
+const OPT=["heart_rate","battery_service","device_information"];
+function dlog(m){
+ const d=new Date(),p=(n,l)=>String(n).padStart(l||2,"0");
+ LOG.push(p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds())+"."+p(d.getMilliseconds(),3)+"  "+m);
+ if(LOG.length>600)LOG.shift();
+ try{console.log("[cardio]",m)}catch(e){}
+ const el=$("#log");if(el){el.textContent=LOG.join("\n");el.scrollTop=el.scrollHeight}
+}
+function hint(e){
+ const n=e&&e.name;
+ if(n==="NotFoundError")return "Aucune ceinture trouvée ou choisie : elle dort (électrodes sèches, non portée), est déjà connectée à un autre appareil, ou le Bluetooth ou la localisation du téléphone est éteint.";
+ if(n==="SecurityError"||n==="NotAllowedError")return "Bluetooth refusé ou bloqué : ouvrez le lien directement dans Chrome (pas dans l’aperçu intégré) et autorisez l’accès.";
+ if(n==="NetworkError")return "Liaison GATT échouée : ceinture occupée par un autre appareil, trop loin, ou signal perdu. Coupez puis rallumez le Bluetooth du téléphone et mouillez les électrodes.";
+ if(n==="InvalidStateError")return "État Bluetooth invalide : fermez les autres onglets Chrome et rouvrez la page.";
+ if(n==="TimeoutError")return "La ceinture ne répond pas à l’activation des notifications. Causes fréquentes : appairage Android résiduel (supprimez-la des appareils enregistrés), ceinture occupée par un autre appareil, ou ceinture à redémarrer (la décrocher de la sangle quelques secondes).";
+ if(n==="NotSupportedError")return "Fonction non supportée par ce navigateur ou cette ceinture.";
+ return "";
+}
+function dfail(ctx,e){const h=hint(e);dlog("✖ "+ctx+" → "+(e&&e.name)+" : "+((e&&e.message)||e));if(h)dlog("   ↳ "+h);return h}
+async function envInfo(){
+ dlog("Page : "+location.origin+" · contexte sécurisé="+isSecureContext+" · dans une iframe="+(window.top!==window.self));
+ dlog("Navigateur : "+navigator.userAgent);
+ dlog("navigator.bluetooth : "+(navigator.bluetooth?"présent":"ABSENT"));
+ try{const fp=document.featurePolicy||document.permissionsPolicy;if(fp&&fp.allowsFeature)dlog("Politique de permissions « bluetooth » autorisée : "+fp.allowsFeature("bluetooth"))}catch(e){}
+ try{if(navigator.bluetooth&&navigator.bluetooth.getAvailability)dlog("Adaptateur Bluetooth disponible : "+await navigator.bluetooth.getAvailability())}catch(e){dfail("getAvailability",e)}
+ dlog("Maintien d’écran allumé (WakeLock) supporté : "+("wakeLock" in navigator));
+}
+async function diag(){
+ dlog("──── Diagnostic ────");
+ await envInfo();
+ dlog("État : connecté="+connected+" · reconnexion voulue="+wantConn+" · appareil="+(dev?((dev.name||"sans nom")+" ["+dev.id.slice(0,8)+"…]"):"aucun")+" · gatt.connected="+(dev&&dev.gatt?dev.gatt.connected:"n/a"));
+ dlog("Mesures reçues : "+hrCount+(lastHrMs?" · dernière il y a "+Math.round((Date.now()-lastHrMs)/1000)+" s":""));
+ try{
+  if(navigator.bluetooth&&navigator.bluetooth.getDevices){const l=await navigator.bluetooth.getDevices();dlog("Appareils déjà autorisés : "+(l.length?l.map(d=>(d.name||"?")+" ["+d.id.slice(0,6)+"…]").join(", "):"aucun"))}
+  else dlog("getDevices() indisponible (normal sur Chrome Android sans option expérimentale)");
+ }catch(e){dfail("getDevices",e)}
+ if(dev&&dev.gatt&&dev.gatt.connected){
+  try{const ss=await dev.gatt.getPrimaryServices();dlog("Services GATT visibles : "+ss.map(x=>x.uuid.slice(4,8)).join(", "))}catch(e){dfail("getPrimaryServices",e)}
+  dlog("Lecture ponctuelle batterie / infos de la ceinture (à la demande seulement) :");await readInfo(dev.gatt);
+ }
+ dlog("──── Fin du diagnostic ────");
+}
+async function watchAdv(){
+ if(!dev){dlog("Aucun appareil : faites d’abord Connecter ou Scan large");return}
+ if(!dev.watchAdvertisements){dlog("watchAdvertisements() indisponible (chrome://flags/#enable-experimental-web-platform-features)");return}
+ try{
+  dev.onadvertisementreceived=e=>{advN++;if(advN<=15||advN%20===0)dlog("📡 annonce n°"+advN+" · signal "+e.rssi+" dBm · services : "+(e.uuids||[]).map(u=>u.slice(4,8)).join(",")+" · puissance "+e.txPower)};
+  await dev.watchAdvertisements();
+  dlog("Écoute des annonces activée. Si rien n’apparaît : la ceinture n’émet pas (endormie, ou déjà connectée ailleurs).");
+ }catch(e){dfail("watchAdvertisements",e)}
+}
+async function forgetDev(){
+ wantConn=false;try{dev&&dev.gatt.connected&&dev.gatt.disconnect()}catch(e){}
+ try{if(dev&&dev.forget){await dev.forget();dlog("✔ appareil oublié (permission supprimée)")}else dlog("forget() indisponible : la sélection sera redemandée de toute façon")}catch(e){dfail("forget",e)}
+ dev=null;connected=false;ui();setSt("Déconnecté");
+}
+
+/* ---------- Bluetooth ---------- */
+async function connect(all){
+ if(!navigator.bluetooth){setSt("Web Bluetooth indisponible : ouvrez la page dans Chrome");dlog("✖ navigator.bluetooth absent");envInfo();return}
+ try{
+  /* 1. libérer proprement toute liaison précédente (sinon la ceinture se croit « occupée » par nous-mêmes) */
+  if(dev&&dev.gatt&&dev.gatt.connected){
+   dlog("↺ liaison précédente encore ouverte : coupure propre, puis pause de 2 s");
+   try{dev.gatt.disconnect()}catch(_){}
+   await pause(2000);
+  }
+  /* 2. réutiliser la ceinture déjà choisie (comme l’appli rameur), sinon ouvrir la liste */
+  if(!all&&dev&&reuseOk){
+   dlog("↺ réutilisation de la ceinture déjà choisie ("+(dev.name||"sans nom")+") : pas de nouvelle recherche");
+  }else{
+   if(dev)dev.ongattserverdisconnected=null;
+   const opts=all?{acceptAllDevices:true,optionalServices:OPT}:{filters:[{services:["heart_rate"]},{namePrefix:"CYCPLUS"}],optionalServices:OPT};
+   dlog("requestDevice ("+(all?"TOUS les appareils BLE":"filtre cardiaque + nom CYCPLUS")+") : choisissez dans la liste…");
+   const t0=Date.now();
+   dev=await navigator.bluetooth.requestDevice(opts);
+   dlog("✔ appareil choisi : "+(dev.name||"(sans nom)")+" · id "+dev.id.slice(0,8)+"… ("+(Date.now()-t0)+" ms)");
+  }
+  dev.ongattserverdisconnected=onDisc;
+  wantConn=true;attempt=0;linking=true;
+  try{
+   for(let i=1;;i++){
+    try{await link();break}
+    catch(e){
+     if(i>=4||!wantConn)throw e;
+     dlog("↻ essai "+i+"/4 échoué ("+e.name+") : coupure et nouvel essai dans 2,5 s");
+     setSt("Connexion… nouvel essai ("+(i+1)+"/4)");
+     try{dev.gatt.disconnect()}catch(_){}
+     await pause(2500);
+    }
+   }
+  }finally{linking=false}
+  reuseOk=true;
+ }catch(e){
+  wantConn=false;reuseOk=false;
+  try{dev&&dev.gatt&&dev.gatt.connected&&dev.gatt.disconnect()}catch(_){}   /* libère la ceinture pour le prochain essai */
+  const h=dfail("connexion",e);setSt("Échec ("+e.name+") — "+(h||e.message));
+ }
+}
+function onDisc(){
+ connected=false;ui();dlog("⚠ ceinture déconnectée (événement gattserverdisconnected)");
+ if(wantConn&&!linking){setSt("Signal perdu, reconnexion…");retry()}
+}
+const pause=ms=>new Promise(r=>setTimeout(r,ms));
+const tmo=(p,ms,l)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>{const e=new Error(l+" sans réponse après "+(ms/1000)+" s");e.name="TimeoutError";rej(e)},ms))]);
+async function link(){
+ attempt++;setSt("Connexion… (essai "+attempt+")");
+ let t=Date.now();const lap=()=>{const n=Date.now(),d=n-t;t=n;return d+" ms"};
+ try{
+  dlog("→ gatt.connect() (essai "+attempt+", délai max 15 s)");
+  const srv=await tmo(dev.gatt.connect(),15000,"gatt.connect()");dlog("✔ GATT connecté ("+lap()+")");
+  const sv=await tmo(srv.getPrimaryService("heart_rate"),8000,"recherche du service cardiaque");dlog("✔ service heart_rate trouvé ("+lap()+")");
+  const ch=await tmo(sv.getCharacteristic("heart_rate_measurement"),8000,"recherche de la caractéristique 2A37");
+  dlog("✔ caractéristique 2A37 trouvée · propriétés : "+["read","write","writeWithoutResponse","notify","indicate"].filter(k=>ch.properties[k]).join("+"));
+  ch.addEventListener("characteristicvaluechanged",onHR);
+  await pause(800);
+  let ok=false;
+  for(let i=1;i<=3&&!ok;i++){
+   try{
+    dlog("→ startNotifications (tentative "+i+"/3, délai max 8 s)");
+    await tmo(ch.startNotifications(),8000,"startNotifications");
+    ok=true;
+   }catch(e){
+    dfail("startNotifications, tentative "+i,e);
+    if(i<3)await pause(1500);
+   }
+  }
+  if(!ok){const err=new Error("la ceinture n’active pas les notifications cardiaques");err.name="TimeoutError";throw err}
+  dlog("✔ notifications activées ("+lap()+") : en attente de mesures…");
+  connected=true;lastHrMs=Date.now();warnedNoHr=false;
+  setSt("Connecté · "+(dev.name||"ceinture"));ui();
+ }catch(e){
+  try{dev.gatt.disconnect()}catch(_){}   /* jamais de liaison à moitié ouverte */
+  throw e;
+ }
+}
+async function readInfo(srv){
+ try{const b=await srv.getPrimaryService("battery_service");const c=await b.getCharacteristic("battery_level");const v=await c.readValue();dlog("🔋 batterie de la ceinture : "+v.getUint8(0)+" %")}catch(e){dlog("Batterie non lisible ("+e.name+")")}
+ try{
+  const d=await srv.getPrimaryService("device_information"),td=new TextDecoder();
+  for(const [n,u] of [["fabricant","manufacturer_name_string"],["modèle","model_number_string"],["firmware","firmware_revision_string"]]){
+   try{const c=await d.getCharacteristic(u);dlog("ℹ "+n+" : "+td.decode(await c.readValue()))}catch(e){}
+  }
+ }catch(e){dlog("Infos appareil non lisibles ("+e.name+")")}
+}
+async function retry(){
+ if(retrying)return;retrying=true;
+ while(!connected&&dev&&wantConn){
+  await new Promise(r=>setTimeout(r,3000));
+  if(!wantConn)break;
+  try{await link();break}catch(e){dfail("reconnexion (essai "+attempt+")",e);setSt("Reconnexion… essai "+attempt)}
+ }
+ retrying=false;
+}
+function disconnect(){
+ wantConn=false;try{dev&&dev.gatt.connected&&dev.gatt.disconnect()}catch(e){}
+ connected=false;setSt("Déconnecté");dlog("Déconnexion manuelle");ui();
+}
+function onHR(ev){
+ const dv=ev.target.value,f=dv.getUint8(0);
+ const b=(f&1)?dv.getUint16(1,true):dv.getUint8(1);
+ hrCount++;lastHrMs=Date.now();warnedNoHr=false;
+ if(hrCount===1)dlog("✔ 1ère mesure reçue : "+b+" bpm (flags 0x"+f.toString(16)+", "+dv.byteLength+" octets)");
+ else if(hrCount%60===0)dlog("… "+hrCount+" mesures reçues (dernière : "+b+" bpm)");
+ if(!b)return;
+ curBpm=b;
+ if(rec&&!viewing){pts.push([Math.round((Date.now()-startMs)/1000*10)/10,b])}
+ showBpm();draw();
+}
+function showBpm(){
+ $("#bpm").innerHTML=(curBpm||"--")+"<small> bpm</small>";
+ const z=zoneOf(curBpm),el=$("#zone");
+ if(!curBpm){el.textContent="Zone —";el.style.color=""}
+ else if(z<0){el.textContent="Sous la zone 1";el.style.color=""}
+ else{el.textContent=Z[z].n;el.style.color=Z[z].c}
+}
+
+/* ---------- Séance ---------- */
+async function lock(){try{wl=await navigator.wakeLock.request("screen")}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&rec)lock()});
+function startRec(){
+ viewing=null;pts=[];startMs=Date.now();rec=true;view={x0:0,x1:900,auto:true};
+ lock();ui();draw();legend();toast("Enregistrement démarré");
+}
+function stopRec(){
+ rec=false;try{wl&&wl.release()}catch(e){}
+ if(pts.length>1){
+  const s=loadS();s.unshift({id:startMs,start:startMs,max:MAXHR,pts:pts.slice()});saveS(s);
+  try{localStorage.removeItem("hr_cur")}catch(e){}
+  toast("Séance sauvegardée");
+ }
+ view.auto=true;ui();draw();legend();
+}
+function loadS(){try{return JSON.parse(localStorage.getItem("hr_sessions")||"[]")}catch(e){return[]}}
+function saveS(s){try{localStorage.setItem("hr_sessions",JSON.stringify(s))}catch(e){toast("Stockage plein")}}
+function autosave(){try{localStorage.setItem("hr_cur",JSON.stringify({start:startMs,max:MAXHR,pts}))}catch(e){}}
+(function recover(){
+ try{
+  const c=JSON.parse(localStorage.getItem("hr_cur")||"null");
+  if(c&&c.pts&&c.pts.length>1){const s=loadS();s.unshift({id:c.start,start:c.start,max:c.max||MAXHR,pts:c.pts,rec:true});saveS(s)}
+  localStorage.removeItem("hr_cur");
+ }catch(e){}
+})();
+
+setInterval(()=>{
+ if(!rec)return;
+ const el=(Date.now()-startMs)/1000;
+ $("#timer").textContent=fmt(el);
+ if(++ticks%10===0)autosave();
+ if(el>=3600&&!setInterval.warned){setInterval.warned=1;toast("1 h atteinte")}
+ draw();legend();
+},1000);
+
+/* ---------- Graphique ---------- */
+function clampView(){
+ const T=tmax();let sp=Math.min(Math.max(view.x1-view.x0,TMIN_SPAN),T);
+ view.x0=Math.max(0,Math.min(view.x0,T-sp));view.x1=view.x0+sp;
+}
+function autoView(){
+ const d=data();const last=d.length?d[d.length-1][0]:0;
+ view.x0=0;view.x1=Math.min(tmax(),Math.max(900,last*1.08));
+}
+const M={L:40,R:8,T:8,B:22};
+function yr(){return[Math.round(MAXHR*.45/10)*10,Math.round((MAXHR+8)/10)*10]}
+function draw(){
+ if(view.auto)autoView();else clampView();
+ const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;
+ if(!w||!h)return;
+ if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+ const g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+ const css=getComputedStyle(document.documentElement),fg=css.getPropertyValue("--fg").trim(),mut=css.getPropertyValue("--mut").trim(),line=css.getPropertyValue("--line").trim();
+ const pw=w-M.L-M.R,ph=h-M.T-M.B,[y0,y1]=yr(),sp=view.x1-view.x0;
+ const X=t=>M.L+(t-view.x0)/sp*pw,Y=v=>M.T+ph*(1-(v-y0)/(y1-y0));
+ /* zones */
+ g.font="11px system-ui";g.textBaseline="middle";
+ Z.forEach(z=>{
+  const a=Math.max(z.a*MAXHR,y0),b=Math.min(z.b*MAXHR,y1);if(b<=a)return;
+  g.globalAlpha=.2;g.fillStyle=z.c;g.fillRect(M.L,Y(b),pw,Y(a)-Y(b));g.globalAlpha=1;
+  if(Y(a)-Y(b)>14){g.fillStyle=z.c;g.textAlign="left";g.fillText(z.n,M.L+5,(Y(a)+Y(b))/2)}
+ });
+ /* grille */
+ g.strokeStyle=line;g.fillStyle=mut;g.lineWidth=1;g.textAlign="right";
+ for(let v=Math.ceil(y0/10)*10;v<=y1;v+=10){
+  g.globalAlpha=.5;g.beginPath();g.moveTo(M.L,Y(v));g.lineTo(M.L+pw,Y(v));g.stroke();g.globalAlpha=1;
+  if(v%20===0)g.fillText(v,M.L-5,Y(v));
+ }
+ const steps=[5,10,15,30,60,120,300,600,900,1800];let st=steps.find(s=>sp/s<=pw/60)||1800;
+ g.textAlign="center";g.textBaseline="top";
+ for(let t=Math.ceil(view.x0/st)*st;t<=view.x1;t+=st){
+  g.globalAlpha=.5;g.beginPath();g.moveTo(X(t),M.T);g.lineTo(X(t),M.T+ph);g.stroke();g.globalAlpha=1;
+  g.fillText(st<60?fmt(t):Math.round(t/60)+" min",X(t),M.T+ph+5);
+ }
+ /* courbe */
+ const d=data();
+ g.save();g.beginPath();g.rect(M.L,M.T,pw,ph);g.clip();
+ g.strokeStyle=fg;g.lineWidth=2.2;g.lineJoin="round";g.beginPath();
+ let prev=null;
+ for(const p of d){
+  if(p[0]<view.x0-30||p[0]>view.x1+30){prev=p;continue}
+  if(prev&&p[0]-prev[0]<=10)g.lineTo(X(p[0]),Y(p[1]));else g.moveTo(X(p[0]),Y(p[1]));
+  prev=p;
+ }
+ g.stroke();
+ if(d.length){const p=d[d.length-1];g.fillStyle=css.getPropertyValue("--acc").trim();g.beginPath();g.arc(X(p[0]),Y(p[1]),4,0,7);g.fill()}
+ g.restore();
+ if(!d.length){g.fillStyle=mut;g.textAlign="center";g.textBaseline="middle";g.font="14px system-ui";g.fillText(connected?"Appuyez sur Démarrer":"Connectez la ceinture puis démarrez la séance",M.L+pw/2,M.T+ph/2)}
+}
+function legend(){
+ const d=data(),acc=[0,0,0,0,0,0];
+ for(let i=0;i<d.length;i++){
+  const dt=i<d.length-1?Math.min(d[i+1][0]-d[i][0],5):1;
+  acc[zoneOf(d[i][1])+1]+=dt;
+ }
+ $("#legend").innerHTML=Z.map((z,i)=>`<span class="chip"><i style="background:${z.c}"></i>${z.n.split(" ")[0]} ${fmt(acc[i+1])}</span>`).join("")+
+  (viewing?`<span class="chip">Séance du ${fmtDate(viewing.start).replace("_"," ")}</span>`:"")+
+  (view.auto?"":`<span class="chip" id="rz" style="cursor:pointer">⤢ Vue complète</span>`);
+ const r=$("#rz");if(r)r.onclick=()=>{view.auto=true;draw();legend()};
+}
+/* gestes : glisser = défiler, pincer / molette = zoom, double tap = vue complète */
+const P=new Map();let lastTap=0,pd=0;
+cv.addEventListener("pointerdown",e=>{cv.setPointerCapture(e.pointerId);P.set(e.pointerId,{x:e.clientX,y:e.clientY});pd=0;
+ if(P.size===1){const n=Date.now();if(n-lastTap<300){view.auto=true;draw();legend()}lastTap=n}});
+cv.addEventListener("pointermove",e=>{
+ const p=P.get(e.pointerId);if(!p)return;
+ const pw=cv.clientWidth-M.L-M.R;
+ if(view.auto){view.auto=false;legend()}
+ if(P.size===1){
+  const dt=-(e.clientX-p.x)/pw*(view.x1-view.x0);view.x0+=dt;view.x1+=dt;
+ }else if(P.size===2){
+  const o=[...P.entries()].find(([k])=>k!==e.pointerId)[1];
+  const d0=Math.abs(p.x-o.x),d1=Math.abs(e.clientX-o.x);
+  if(d0>10&&d1>10){
+   const rect=cv.getBoundingClientRect(),mid=((e.clientX+o.x)/2-rect.left-M.L)/pw;
+   const sp=view.x1-view.x0,ns=sp*d0/d1,c=view.x0+mid*sp;
+   view.x0=c-mid*ns;view.x1=view.x0+ns;
+  }
+ }
+ p.x=e.clientX;p.y=e.clientY;clampView();draw();
+});
+const up=e=>{P.delete(e.pointerId)};
+cv.addEventListener("pointerup",up);cv.addEventListener("pointercancel",up);
+cv.addEventListener("wheel",e=>{
+ e.preventDefault();view.auto=false;
+ const rect=cv.getBoundingClientRect(),pw=cv.clientWidth-M.L-M.R,mid=Math.min(1,Math.max(0,(e.clientX-rect.left-M.L)/pw));
+ const sp=view.x1-view.x0,ns=sp*(e.deltaY>0?1.2:1/1.2),c=view.x0+mid*sp;
+ view.x0=c-mid*ns;view.x1=view.x0+ns;clampView();draw();legend();
+},{passive:false});
+addEventListener("resize",draw);
+addEventListener("orientationchange",()=>setTimeout(draw,200));
+
+/* ---------- Export / menu ---------- */
+const csv=s=>"temps_s,bpm,zone\n"+s.pts.map(p=>p[0]+","+p[1]+","+(zoneOf(p[1])+1)).join("\n");
+async function exportS(s){
+ const txt=csv(s),name="cardio_"+fmtDate(s.start)+".csv";
+ try{
+  const f=new File([txt],name,{type:"text/csv"});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});return}
+ }catch(e){if(e.name==="AbortError")return}
+ try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([txt],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();a.remove();toast("Téléchargement lancé")}catch(e){copyS(s)}
+}
+async function copyS(s){try{await navigator.clipboard.writeText(csv(s));toast("CSV copié")}catch(e){toast("Copie impossible")}}
+function curSession(){return pts.length>1?{start:startMs||Date.now(),pts:pts}:null}
+function menu(){
+ const S=loadS(),cur=curSession();
+ let h=`<div class="row"><b style="flex:1;font-size:18px">Options</b><button id="x">Fermer</button></div>
+ <h3>Fréquence cardiaque maximale</h3>
+ <div class="row"><input type="number" id="mx" min="120" max="230" value="${MAXHR}"> bpm <button id="mxok">Appliquer</button></div>
+ <div style="font-size:13px;color:var(--mut)">Estimation courante : 220 − votre âge. Les zones sont des % de cette valeur (50–60–70–80–90–100 %).</div>
+ <h3>Affichage</h3><div class="row"><button id="fs">Plein écran + paysage</button></div>`;
+ if(cur&&!rec)h+=`<h3>Séance en mémoire</h3><div class="row"><button id="ec">Partager CSV</button><button id="cc">Copier CSV</button></div>`;
+ h+=`<h3>Séances sauvegardées (${S.length})</h3>`;
+ if(!S.length)h+=`<div style="color:var(--mut)">Aucune pour l’instant.</div>`;
+ S.forEach((s,i)=>{
+  const dur=s.pts.length?s.pts[s.pts.length-1][0]:0,avg=Math.round(s.pts.reduce((a,p)=>a+p[1],0)/(s.pts.length||1)),mx=Math.max(...s.pts.map(p=>p[1]));
+  h+=`<div class="sess"><b>${fmtDate(s.start).replace("_"," ")}</b>${s.rec?" (récupérée)":""} · ${fmt(dur)} · moy ${avg} · max ${mx}
+  <div class="row"><button data-a="v" data-i="${i}">Voir</button><button data-a="e" data-i="${i}">Partager CSV</button><button data-a="c" data-i="${i}">Copier</button><button data-a="d" data-i="${i}">Suppr.</button></div></div>`;
+ });
+ $("#panel").innerHTML=h;$("#ov").classList.add("on");
+ $("#x").onclick=()=>$("#ov").classList.remove("on");
+ $("#mxok").onclick=()=>{const v=+$("#mx").value;if(v>=120&&v<=230){MAXHR=v;try{localStorage.setItem("hr_max",v)}catch(e){}draw();legend();showBpm();toast("FC max : "+v)}};
+ $("#fs").onclick=async()=>{try{await document.documentElement.requestFullscreen();await screen.orientation.lock("landscape")}catch(e){toast("Tournez simplement le téléphone")}$("#ov").classList.remove("on");setTimeout(draw,300)};
+ if($("#ec")){$("#ec").onclick=()=>exportS(cur);$("#cc").onclick=()=>copyS(cur)}
+ $("#panel").querySelectorAll("button[data-a]").forEach(b=>b.onclick=()=>{
+  const i=+b.dataset.i,s=S[i],a=b.dataset.a;
+  if(a==="v"){if(rec){toast("Arrêtez d’abord la séance");return}viewing=s;MAXHR=s.max||MAXHR;view.auto=true;$("#ov").classList.remove("on");$("#timer").textContent=fmt(s.pts[s.pts.length-1][0]);draw();legend()}
+  if(a==="e")exportS(s);if(a==="c")copyS(s);
+  if(a==="d"&&confirm("Supprimer cette séance ?")){S.splice(i,1);saveS(S);if(viewing&&viewing.id===s.id)viewing=null;menu();draw();legend()}
+ });
+}
+$("#ov").addEventListener("click",e=>{if(e.target.id==="ov")$("#ov").classList.remove("on")});
+
+/* ---------- UI ---------- */
+function ui(){
+ $("#bConn").textContent=connected?"Déconnecter":"Connecter";
+ $("#bConn").className=connected?"":"pri";
+ $("#bRec").disabled=!connected&&!rec;
+ $("#bRec").textContent=rec?"Arrêter":"Démarrer";
+ $("#bRec").className=rec?"pri":"";
+}
+$("#bConn").onclick=()=>connected?disconnect():connect();
+$("#bRec").onclick=()=>rec?stopRec():startRec();
+$("#bMenu").onclick=menu;
+function updStat(){
+ $("#dstat").textContent="Liaison : "+(connected?"active":(wantConn?"reconnexion…":"aucune"))+" · appareil : "+(dev?(dev.name||"sans nom"):"aucun")+" · mesures : "+hrCount+(lastHrMs&&connected?" · dernière il y a "+Math.round((Date.now()-lastHrMs)/1000)+" s":"");
+}
+function openDbg(){$("#dbg").classList.add("on");$("#log").textContent=LOG.join("\n");$("#log").scrollTop=1e9;updStat()}
+$("#bDbg").onclick=openDbg;
+$("#dClose").onclick=()=>$("#dbg").classList.remove("on");
+$("#dDiag").onclick=diag;
+$("#dAll").onclick=()=>connect(true);
+$("#dAdv").onclick=watchAdv;
+$("#dForget").onclick=forgetDev;
+$("#dClear").onclick=()=>{LOG.length=0;$("#log").textContent=""};
+$("#dCopy").onclick=async()=>{try{await navigator.clipboard.writeText(LOG.join("\n"));toast("Journal copié")}catch(e){toast("Copie impossible : sélectionnez le texte")}};
+setInterval(()=>{
+ if(connected&&Date.now()-lastHrMs>10000&&!warnedNoHr){warnedNoHr=true;dlog("⚠ Aucune mesure depuis 10 s alors que la liaison est active : électrodes sèches ou ceinture mal portée ?")}
+ if($("#dbg").classList.contains("on"))updStat();
+},1000);
+dlog("Application démarrée");envInfo();
+ui();draw();legend();
+</script>
+</body>
+</html>
